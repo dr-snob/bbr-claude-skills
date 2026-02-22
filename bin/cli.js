@@ -98,12 +98,13 @@ function linkSkill(name, targetDir) {
   fs.mkdirSync(targetDir, { recursive: true });
 
   try {
-    if (fs.lstatSync(dest).isSymbolicLink()) fs.unlinkSync(dest);
-    else if (fs.statSync(dest).isDirectory()) {
-      warn(
-        `Skipping '${name}' - directory exists (not managed by this installer)`,
-      );
-      return false;
+    const stat = fs.lstatSync(dest);
+    if (stat.isSymbolicLink()) {
+      fs.unlinkSync(dest);
+    } else if (stat.isDirectory()) {
+      // Adopt existing manual install — replace directory with managed symlink
+      fs.rmSync(dest, { recursive: true, force: true });
+      info(`Adopting '${name}' (replacing local copy with managed symlink)`);
     }
   } catch {}
 
