@@ -1,13 +1,13 @@
 ---
 name: house-party-protocol
-description: Use when a task is complex enough for multiple agents to work in parallel with mandatory swarming, sacred file ownership, shared contracts for cross-cutting concerns, and pre-completion checklists. Field-tested on real multi-phase security hardening (3 agents, 8 tasks, 11 files). Triggers on large features (4+ files), multi-file refactors, competing hypotheses, debugging, or any task where orchestration beats intelligence.
+description: Use when a task is complex enough for multiple agents to work in parallel with sacred file ownership, shared contracts for cross-cutting concerns, prep & review protocol for idle agents, and pre-completion checklists. Field-tested across 2 sessions (6 agents, 15 tasks, 23 files). Triggers on large features (4+ files), multi-file refactors, competing hypotheses, debugging, or any task where orchestration beats intelligence.
 ---
 
 # House Party Protocol
 
-Multi-agent team orchestration where agents self-organize, communicate, swarm to help each other, and converge on the best solution — like a university study group, not a military hierarchy.
+Multi-agent team orchestration where agents work in parallel with sacred file ownership, shared contracts for cross-cutting concerns, and lead-directed idle utilization.
 
-**Core principle:** Better orchestration beats smarter models. Break work into focused subtasks, let agents solve them in parallel, and when someone finishes — they join whoever needs help most.
+**Core principle:** Better orchestration beats smarter models. Break work into focused subtasks with clear file ownership, let agents solve them in parallel, and when someone finishes — the lead assigns them prep, review, or pre-assigns their next task.
 
 ## When to Use
 
@@ -95,62 +95,37 @@ Teammates message each other — the lead doesn't relay everything. This is what
 - **Challenge:** "Your session handler has a race condition. Consider a mutex."
 - **Status update:** "Security scan 60% done. Covering auth, API, and input validation. Still need: CSRF, file upload, and secrets scanning."
 
-### Rule 4: The Study Group (Mandatory Swarming)
+### Rule 4: Prep & Review Protocol (Idle Agent Utilization)
 
-This is the core differentiator. When agents finish their task, they don't just grab random work. They **join a busy agent and become their study group.** This is **mandatory, not voluntary** — the lead enforces it.
+When agents finish their task, the lead immediately assigns them useful work. **This is lead-enforced, not voluntary** — idle agents don't choose what to do next; the lead directs them.
 
-**Why mandatory?** In practice, voluntary swarming fails. When tasks unblock, the busy agent (already in-flow) self-claims everything before idle agents can react. Idle agents never get to swarm. The lead must force the handoff.
+**Why not "Study Group" (co-implementation)?** Field-tested across 2 sessions (6 agents, 15 tasks, 23 files): true co-implementation on the same task never fires. The file ownership rule (Rule 2) prevents it — if Agent A owns `login/page.tsx`, Agent B can't touch it. The only things B can do are prep, review, or work on *different* files (which is really a separate task, not swarming). This tension between "force helpers onto busy agents" and "one agent per file" means idle agents are most valuable doing **prep and review**, not co-implementing.
 
-**How it works — Lead-Enforced Handoff:**
+**What actually works — Lead assigns one of three roles:**
+
+1. **Pre-assign the next blocked task** — If a task will unblock soon, assign it to the idle agent now. Have them prep: read patterns, gather context, understand the files they'll own. When the blocker clears, they start immediately instead of ramping up.
+
+2. **Review completed output** — Have the idle agent verify another agent's finished work against requirements. This catches integration gaps the implementer missed (e.g., audit calls not added, shared contracts not honored).
+
+3. **Different-file delegation** — Only when a busy agent's remaining work spans 5+ files AND the helper can take entire files they haven't started. The lead messages the busy agent: "[idle-agent] is available. Delegate files you haven't started." The busy agent provides context for those specific files.
+
+**Lead protocol when agent goes idle:**
 
 1. Agent A finishes its task and reports to lead
-2. Lead checks TaskList — identifies the busiest teammate (Agent B)
-3. **Lead messages Agent B**: "[Agent A] is joining you. Brief them on a subtask NOW."
-4. Agent B MUST pause, review remaining work, and delegate with context
-5. Agent B provides: what's done so far, what's left, which files to hand off, any gotchas
-6. This is NOT optional — the lead enforces it
-
-**Helper assignment rules (file-safe swarming):**
-Helpers may ONLY work on:
-- **Different files** the busy agent hasn't started (coding on separate files)
-- **Review/checklist** work (verifying the busy agent's output against requirements)
-- **Research/prep** (reading related code, checking interfaces, gathering context)
-- **NEVER the same file** the busy agent is actively editing
-
-If no separate coding work exists, assign the helper to **review and verification** — this catches missed requirements, which is equally valuable.
-
-**Why the forced pause is a quality gate:** When the busy agent must stop to brief a helper, they naturally:
-- Review their remaining scope (catches missed requirements)
-- Articulate what's left (surfaces gaps they didn't notice)
-- Share context (prevents knowledge silos)
-
-**Example:**
-
-```
-Password-hardener is working on 4 tasks (validation module, signup, reset page, errors).
-RPC-guarder finishes its SQL migration. Reports to lead.
-
-Lead messages password-hardener:
-"rpc-guarder is joining you. Brief them on a subtask NOW."
-
-Password-hardener responds:
-"Done so far: validation module + error messages.
-Remaining: signup page hardening, reset-password page.
-rpc-guarder: take the reset-password page — here's the design pattern
-from signup, here's the validation import, here's the callback route change.
-I'll finish the signup page."
-
-Both work in parallel on different files. No conflicts.
-```
+2. Lead checks TaskList:
+   - **Unblocked tasks available?** → Assign directly to Agent A
+   - **Tasks about to unblock?** → Pre-assign with prep instructions ("read X, Y, Z files while you wait")
+   - **No available tasks?** → Assign Agent A to review another agent's completed work
+3. **Never let an agent sit idle without direction**
 
 **Spawn prompt addition for all teammates:**
 ```
 When you finish your task:
-1. Check TaskList for unclaimed work — claim if available
-2. If none: message the lead immediately with your status
-3. The lead will assign you to help a busy teammate
-4. When assigned: follow the busy agent's briefing, work ONLY on the files they delegate to you
-5. If no coding work is available, help with review/verification of their output
+1. Mark it completed via TaskUpdate
+2. Check TaskList for unclaimed, unblocked work — claim if available
+3. If none: message the lead immediately with your status
+4. The lead will assign you prep, review, or a pre-assigned task
+5. If pre-assigned a blocked task: read related files and prep while waiting
 ```
 
 ### Rule 5: Bring the Best to the Table (Model Selection)
@@ -325,9 +300,11 @@ Before reporting task complete:
 | Same file owned by 2 agents | Assign exclusive file ownership — sacred even during swarming (Rule 2) |
 | No context in spawn prompt | Include files, scope, communication targets, checklist, swarming instructions |
 | All agents use same model | Match model to role (Rule 5) |
-| Agent finishes and goes idle forever | Lead-enforced mandatory swarming — force busy agent to accept help (Rule 4) |
-| Busy agent self-claims all unblocked tasks | Lead pre-assigns or forces handoff before idle agents lose the race |
-| Helper touches same file as busy agent | Helpers work on different files, review, or research only (Rule 4) |
+| Agent finishes and goes idle forever | Lead immediately assigns prep, review, or pre-assigns next task (Rule 4) |
+| Busy agent self-claims all unblocked tasks | Lead pre-assigns blocked tasks to idle agents so they're ready when unblocked |
+| Helper touches same file as busy agent | Helpers do prep/review or take entirely different files only (Rule 4) |
+| Task design puts same file in 2 agents' scope | Create explicit file ownership table; same-file tasks must be sequential (blockedBy) |
+| Agent adds imports but not the actual code | Lead must Grep-verify output; import ≠ implementation (Rule 8) |
 | Cross-cutting concern causes file conflict | Use shared contracts — query params, interfaces, function signatures (Rule 2) |
 | Agent misses mid-task message requirements | Pre-completion checklist catches it — re-read all messages before reporting done (Rule 8) |
 | Agent reports "skipped X" and moves on | "Explain why" is a flag, not resolution — loop stays open until done or waived (Rule 8) |
@@ -338,8 +315,8 @@ Before reporting task complete:
 
 | Vanilla Agent Teams | House Party Protocol |
 |---|---|
-| Spawn teammates with tasks | **Lead-enforced mandatory swarming** — lead forces busy agents to accept helpers and delegate subtasks |
-| Self-claim next task | **File-safe helping** — helpers work only on different files, review, or research. Never same file as busy agent |
+| Spawn teammates with tasks | **Lead-directed idle utilization** — lead immediately assigns prep, review, or pre-assigns blocked tasks to idle agents |
+| Self-claim next task | **Prep & Review Protocol** — idle agents prep for blocked tasks, review completed output, or take entirely separate files. Never same file as busy agent |
 | All agents same model | **Model-per-role strategy** — Opus specialists, Sonnet workers, Haiku scouts |
 | No built-in consensus | **3 consensus patterns** — adversarial debate, parallel+judge, majority |
 | Manual quality checks | **Hook-based gates** — TeammateIdle and TaskCompleted enforcement |
