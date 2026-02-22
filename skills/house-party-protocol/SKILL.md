@@ -1,6 +1,6 @@
 ---
 name: house-party-protocol
-description: Use when a task is complex enough for multiple agents to work in parallel, communicate, assist each other, and converge on best solutions. Triggers on large features, multi-file refactors, competing hypotheses, debugging, or any task where orchestration beats intelligence.
+description: Use when a task is complex enough for multiple agents to work in parallel with mandatory swarming, sacred file ownership, shared contracts for cross-cutting concerns, and pre-completion checklists. Field-tested on real multi-phase security hardening (3 agents, 8 tasks, 11 files). Triggers on large features (4+ files), multi-file refactors, competing hypotheses, debugging, or any task where orchestration beats intelligence.
 ---
 
 # House Party Protocol
@@ -42,7 +42,7 @@ Enable agent teams (experimental):
 
 ---
 
-## The 7 Party Rules
+## The 8 Party Rules
 
 ### Rule 1: The Host Sets the Table (Lead in Delegate Mode)
 
@@ -74,6 +74,16 @@ If stuck: Message the lead for help or ask a free teammate."
 - Task scope (what to build)
 - Communication targets (who to message when done or stuck)
 - Permission to ask for help
+- Pre-completion checklist (see Rule 8)
+- Swarming instructions (see Rule 4)
+
+**File ownership is sacred — even during swarming.** One agent per file, no exceptions. When work crosses file boundaries (Agent A's work requires a change in Agent B's file), resolve via **shared contracts**:
+- Agent A messages Agent B: "Your file needs to handle X"
+- They agree on a contract (query param, interface, function signature)
+- Each implements their side in their own file
+- Neither touches the other's file
+
+Example: A reset-password page needs a success banner on the login page. The reset-password agent redirects to `/login?reason=password_reset` (contract). The login page owner adds the banner. No file conflict.
 
 ### Rule 3: Guests Talk Directly (Peer Communication)
 
@@ -85,45 +95,62 @@ Teammates message each other — the lead doesn't relay everything. This is what
 - **Challenge:** "Your session handler has a race condition. Consider a mutex."
 - **Status update:** "Security scan 60% done. Covering auth, API, and input validation. Still need: CSRF, file upload, and secrets scanning."
 
-### Rule 4: The Study Group (Swarming Pattern)
+### Rule 4: The Study Group (Mandatory Swarming)
 
-This is the core differentiator. When agents finish their task, they don't just grab random work. They **join a busy agent and become their study group.**
+This is the core differentiator. When agents finish their task, they don't just grab random work. They **join a busy agent and become their study group.** This is **mandatory, not voluntary** — the lead enforces it.
 
-**How it works:**
+**Why mandatory?** In practice, voluntary swarming fails. When tasks unblock, the busy agent (already in-flow) self-claims everything before idle agents can react. Idle agents never get to swarm. The lead must force the handoff.
 
-1. Agent A finishes its task
-2. Agent A checks TaskList — no unclaimed tasks
-3. Agent A messages the busiest teammate: "I'm free. What can I take off your plate?"
-4. Busy agent responds with a briefing: "Here's what I've done so far, here's what's left. Take [subtask X]."
-5. If another agent (Agent B) also finishes, it joins too
-6. The original agent becomes the **guide** — coordinating the swarm
+**How it works — Lead-Enforced Handoff:**
+
+1. Agent A finishes its task and reports to lead
+2. Lead checks TaskList — identifies the busiest teammate (Agent B)
+3. **Lead messages Agent B**: "[Agent A] is joining you. Brief them on a subtask NOW."
+4. Agent B MUST pause, review remaining work, and delegate with context
+5. Agent B provides: what's done so far, what's left, which files to hand off, any gotchas
+6. This is NOT optional — the lead enforces it
+
+**Helper assignment rules (file-safe swarming):**
+Helpers may ONLY work on:
+- **Different files** the busy agent hasn't started (coding on separate files)
+- **Review/checklist** work (verifying the busy agent's output against requirements)
+- **Research/prep** (reading related code, checking interfaces, gathering context)
+- **NEVER the same file** the busy agent is actively editing
+
+If no separate coding work exists, assign the helper to **review and verification** — this catches missed requirements, which is equally valuable.
+
+**Why the forced pause is a quality gate:** When the busy agent must stop to brief a helper, they naturally:
+- Review their remaining scope (catches missed requirements)
+- Articulate what's left (surfaces gaps they didn't notice)
+- Share context (prevents knowledge silos)
 
 **Example:**
 
 ```
-Security agent is working alone on a full security audit.
-Frontend-cleanup agent finishes. Messages security agent: "I'm free, need help?"
-Effects agent also finishes. Messages security agent: "Also free."
+Password-hardener is working on 4 tasks (validation module, signup, reset page, errors).
+RPC-guarder finishes its SQL migration. Reports to lead.
 
-Security agent responds to both:
-"Done so far: auth module, API endpoints.
-Remaining: CSRF protection, file upload validation, secrets scanning.
-Frontend-cleanup: take CSRF — check all forms for tokens.
-Effects: take file upload — check size limits and type validation.
-I'll finish secrets scanning."
+Lead messages password-hardener:
+"rpc-guarder is joining you. Brief them on a subtask NOW."
 
-All three work security subtasks in parallel. Security agent guides.
+Password-hardener responds:
+"Done so far: validation module + error messages.
+Remaining: signup page hardening, reset-password page.
+rpc-guarder: take the reset-password page — here's the design pattern
+from signup, here's the validation import, here's the callback route change.
+I'll finish the signup page."
+
+Both work in parallel on different files. No conflicts.
 ```
-
-**Key:** The guide agent has the domain context. Helpers follow its lead. No limit on how many helpers can join — it scales naturally.
 
 **Spawn prompt addition for all teammates:**
 ```
 When you finish your task:
-1. Check TaskList for unclaimed work
-2. If none: message the teammate who's still working
-3. Ask: "I'm free. What can I take off your plate?"
-4. Follow their guidance — they know the domain context
+1. Check TaskList for unclaimed work — claim if available
+2. If none: message the lead immediately with your status
+3. The lead will assign you to help a busy teammate
+4. When assigned: follow the busy agent's briefing, work ONLY on the files they delegate to you
+5. If no coding work is available, help with review/verification of their output
 ```
 
 ### Rule 5: Bring the Best to the Table (Model Selection)
@@ -209,6 +236,36 @@ Use hooks to prevent premature completion and enforce standards:
 
 Exit code 2 from the hook script blocks completion and sends feedback to the agent.
 
+### Rule 8: The Checklist Before Last Call (Pre-Completion Protocol)
+
+Agents must complete a 5-step checklist before reporting any task as done. This prevents missed requirements — especially from messages received mid-task.
+
+**Add to ALL agent spawn prompts:**
+```
+Before reporting task complete:
+1. Re-read all messages received during this task
+2. Verify every requirement mentioned in those messages is implemented
+3. List any items you received mid-task and confirm coverage
+4. Code integrity check:
+   - All imports resolve to real files/exports (no phantom imports)
+   - Functions you created are actually called from somewhere
+   - No dead code, placeholder TODOs, or cosmetic-only additions
+   - Cross-file connections work end-to-end (e.g., redirect target
+     page exists, shared contracts match on both sides)
+5. If you skipped anything, explain why to the lead
+6. CRITICAL: "Explain why" is a FLAG, not a resolution. The work must
+   still be completed after resolution with the lead. The loop does not
+   close until the work is done OR the lead explicitly waives it.
+```
+
+**Why this matters:** In practice, agents receive mid-task messages from the lead or peers (e.g., "also add a password_reset case to the login page"). These messages arrive while the agent is deep in implementation and get acknowledged but not integrated. The code integrity step catches ghost code — functions that exist but nothing calls, imports that point to files that don't exist yet, or cosmetic additions that look right but aren't wired up. The checklist forces a deliberate review pass before completion.
+
+**The lead's role:** When an agent reports "I skipped X because Y":
+- Lead evaluates the reason
+- If valid: lead waives it explicitly ("Acknowledged, skip approved")
+- If not valid: lead sends the agent back ("Implement X before marking complete")
+- Task stays in_progress until resolved either way
+
 ---
 
 ## Party Compositions
@@ -265,10 +322,15 @@ Exit code 2 from the hook script blocks completion and sends feedback to the age
 | Mistake | Fix |
 |---------|-----|
 | Lead starts coding | Use delegate mode (Shift+Tab) |
-| Same file owned by 2 agents | Assign exclusive file ownership |
-| No context in spawn prompt | Include files, scope, communication targets |
+| Same file owned by 2 agents | Assign exclusive file ownership — sacred even during swarming (Rule 2) |
+| No context in spawn prompt | Include files, scope, communication targets, checklist, swarming instructions |
 | All agents use same model | Match model to role (Rule 5) |
-| Agent finishes and goes idle | Study group pattern — join a busy agent (Rule 4) |
+| Agent finishes and goes idle forever | Lead-enforced mandatory swarming — force busy agent to accept help (Rule 4) |
+| Busy agent self-claims all unblocked tasks | Lead pre-assigns or forces handoff before idle agents lose the race |
+| Helper touches same file as busy agent | Helpers work on different files, review, or research only (Rule 4) |
+| Cross-cutting concern causes file conflict | Use shared contracts — query params, interfaces, function signatures (Rule 2) |
+| Agent misses mid-task message requirements | Pre-completion checklist catches it — re-read all messages before reporting done (Rule 8) |
+| Agent reports "skipped X" and moves on | "Explain why" is a flag, not resolution — loop stays open until done or waived (Rule 8) |
 | Single agent makes critical decision | Use consensus voting (Rule 6) |
 | No quality checks | Add TeammateIdle/TaskCompleted hooks (Rule 7) |
 
@@ -276,9 +338,11 @@ Exit code 2 from the hook script blocks completion and sends feedback to the age
 
 | Vanilla Agent Teams | House Party Protocol |
 |---|---|
-| Spawn teammates with tasks | **Study group swarming** — free agents join busy ones with guided subtask splitting |
-| Self-claim next task | **Context-aware helping** — guide agent briefs helpers on domain state |
+| Spawn teammates with tasks | **Lead-enforced mandatory swarming** — lead forces busy agents to accept helpers and delegate subtasks |
+| Self-claim next task | **File-safe helping** — helpers work only on different files, review, or research. Never same file as busy agent |
 | All agents same model | **Model-per-role strategy** — Opus specialists, Sonnet workers, Haiku scouts |
 | No built-in consensus | **3 consensus patterns** — adversarial debate, parallel+judge, majority |
 | Manual quality checks | **Hook-based gates** — TeammateIdle and TaskCompleted enforcement |
 | Generic team structure | **Pre-built party compositions** with model assignments per role |
+| Agents report "done" whenever | **5-step pre-completion checklist** — re-read messages, verify coverage, no escape without resolution |
+| Cross-cutting concerns cause conflicts | **Shared contracts** — agents agree on interfaces/params, each implements in their own files |
