@@ -69,8 +69,15 @@ fi
 # Write state
 echo "${LEVEL}|${PRESSURE}|${TOOL_COUNT}|${TRANSCRIPT_KB}" > "$PRESSURE_FILE"
 
-# --- Hook Output (stderr for user visibility) ---
-# Only warn at transitions and periodic checks
+# --- Hook Output (stderr ONLY — human terminal visibility) ---
+# DELIBERATELY stderr-only. The MODEL has accurate native context awareness; this
+# script's pressure number is a CRUDE PROXY (tool count + largest-jsonl-across-all-
+# projects file size, thresholds calibrated for a small window, not a 1M context).
+# Injecting it into the model's context (stdout additionalContext) made a bad proxy
+# OVERRIDE good native judgment and caused a false-EMERGENCY mid-session abort
+# (2026-06-06). So: NO stdout/additionalContext. stderr = Gerald's terminal only;
+# the /tmp state file above is for the context-sentinel skill. Do not re-add a
+# model-facing channel unless it reads a REAL context measurement.
 LAST_LEVEL=""
 LAST_LEVEL_FILE="/tmp/claude-last-level-${SESSION_ID}"
 if [ -f "$LAST_LEVEL_FILE" ]; then

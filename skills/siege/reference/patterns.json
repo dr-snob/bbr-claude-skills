@@ -1,0 +1,426 @@
+{
+  "version": "1.2.0",
+  "description": "/harden rule engine — 32 patterns extracted from scanning 2 real codebases across 7 pillars + deep scan",
+  "generated_from": ["etna-erp-app", "coco-snob"],
+  "stats": {
+    "total_patterns": 32,
+    "total_findings": 179,
+    "findings_fixed": 106,
+    "findings_flagged": 72,
+    "findings_accepted": 1,
+    "codebases_scanned": 2,
+    "waves_completed": 23
+  },
+  "pillars": {
+    "security": {
+      "id": 1,
+      "patterns": [
+        {
+          "id": "SEC-001",
+          "name": "Duplicated security constant",
+          "severity": "medium",
+          "description": "Security-critical value (role list, allowed origins, etc.) hardcoded in multiple places instead of imported from single source of truth",
+          "detection": "Grep for role arrays or security constants; cross-reference with canonical definitions. Look for string arrays containing role names.",
+          "grep_pattern": "\\[.*admin.*finance.*\\]|\\[.*admin.*manager.*\\]",
+          "fix": "Extract to shared constant, import everywhere",
+          "source_wave": 5,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "SEC-002",
+          "name": "Fire-and-forget async without .catch()",
+          "severity": "high",
+          "description": "Promise chain (.then()) without .catch() handler — if the promise rejects, the error is silently swallowed or triggers unhandled rejection",
+          "detection": "Grep for .then( without a following .catch(. Check signOut, API calls, and audit logging chains.",
+          "grep_pattern": "\\.then\\([^)]*\\)(?!\\s*\\.catch)",
+          "fix": "Add .catch() with error logging. For critical paths (signOut), include fallback navigation.",
+          "source_wave": 5,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "SEC-003",
+          "name": "Missing CSRF origin check on API route",
+          "severity": "high",
+          "description": "POST/PUT/DELETE API route handler that does not validate the Origin header against the expected domain",
+          "detection": "Check all API route handlers (app/api/*/route.ts) for Origin header validation before processing mutations",
+          "grep_pattern": "export async function POST|PUT|DELETE",
+          "fix": "Add Origin header check at the top of the handler: compare request Origin to expected origin, reject with 403 if mismatch",
+          "source_wave": 5,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "SEC-004",
+          "name": "Cookie without secure flag",
+          "severity": "medium",
+          "description": "Cookie set without the secure flag, allowing transmission over unencrypted HTTP in production",
+          "detection": "Grep for .cookies.set( and check for presence of secure: true or secure: process.env.NODE_ENV === 'production'",
+          "grep_pattern": "cookies\\.set\\(",
+          "fix": "Add secure: process.env.NODE_ENV === 'production' to cookie options",
+          "source_wave": 5,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "SEC-005",
+          "name": "Wildcard CORS override in Firebase Functions",
+          "severity": "high",
+          "description": "Firebase Functions v2 onRequest with `cors: true` in options sets Access-Control-Allow-Origin: * at SDK level before handler runs, bypassing any custom setCors() allowlist in the handler body",
+          "detection": "Grep for `cors: true` in onRequest function options objects. Cross-reference with setCors() calls in the same handler body.",
+          "grep_pattern": "cors:\\s*true",
+          "fix": "Remove `cors: true` from options object. Rely on custom setCors() allowlist already in handler body.",
+          "source_wave": 6,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "SEC-006",
+          "name": "Error details leaked in API response",
+          "severity": "medium",
+          "description": "Server error response includes raw error.message or stack trace, potentially exposing SMTP config, internal paths, or service details to clients",
+          "detection": "Grep for `error.message` or `String(error)` inside NextResponse.json/res.json 500 responses. Check for 'details' field in error responses.",
+          "grep_pattern": "error\\.message|String\\(error\\)",
+          "fix": "Return only generic error message to client. Log detailed error server-side with console.error.",
+          "source_wave": 6,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "SEC-007",
+          "name": "Unguarded signOut call",
+          "severity": "low",
+          "description": "Firebase/Supabase signOut() call without try-catch — if sign-out fails (network issue, corrupted session), throws unhandled error that propagates to caller",
+          "detection": "Grep for signOut( calls. Check if each is inside a try-catch or has a .catch() handler.",
+          "grep_pattern": "signOut\\(",
+          "fix": "Wrap in try-catch with console.error fallback. For critical paths, ensure user is still redirected to login.",
+          "source_wave": 6,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "SEC-008",
+          "name": "Fail-open rate limiter",
+          "severity": "critical",
+          "description": "Rate limiter catch block returns allowed:true on database error — attacker can trigger storage errors to bypass rate limiting entirely",
+          "detection": "Find rate limit functions. Check catch blocks — if they return allowed:true or equivalent, the limiter fails open.",
+          "grep_pattern": "rateLimit|rateLimiter|checkRate",
+          "fix": "Change catch block to return allowed:false (fail-closed). Log the error for monitoring but deny the request.",
+          "source_wave": 16,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "SEC-009",
+          "name": "Non-atomic idempotency check",
+          "severity": "critical",
+          "description": "Webhook/payment processing reads a document to check if already processed, then writes if not — without a transaction. Concurrent duplicate webhooks can both pass the check and process the payment twice (double loyalty points, double inventory deduction).",
+          "detection": "Find webhook handlers or payment processors. Look for read-then-write patterns without runTransaction/atomicOperation wrapping.",
+          "grep_pattern": "idempoten|already.*processed|duplicate.*webhook",
+          "fix": "Wrap the check-and-set in a database transaction (Firestore runTransaction, Postgres SELECT FOR UPDATE). Only the first concurrent caller should succeed.",
+          "source_wave": 16,
+          "source_codebase": "coco-snob"
+        }
+      ]
+    },
+    "flow_tracing": {
+      "id": 2,
+      "patterns": [
+        {
+          "id": "FLOW-001",
+          "name": "Client-only credential gate (server trigger ignores token)",
+          "severity": "critical",
+          "description": "Invitation/signup token validated only in the client UI, but the server-side trigger or backend function matches by email alone — anyone knowing the email can claim the intended role without possessing the token",
+          "detection": "Trace the full lifecycle of tokens/credentials from UI to backend. Check if the backend function (DB trigger, Cloud Function) actually validates the token or just matches on a weaker identifier (email, userId).",
+          "grep_pattern": "reconcile.*invitation|ON INSERT.*trigger",
+          "fix": "Pass the token to the backend. Validate it server-side before granting the role. Mark token as consumed atomically in the same transaction.",
+          "source_wave": 11,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "FLOW-002",
+          "name": "Non-atomic capacity reservation across payment boundary",
+          "severity": "critical",
+          "description": "Capacity/inventory check happens at payment initiation but slot is only reserved in the webhook after payment succeeds — concurrent requests can all pass the check, leading to overselling",
+          "detection": "Trace checkout flow from capacity check to payment to webhook. Check if the capacity decrement is atomic with the check or if there is a window between check and reservation.",
+          "grep_pattern": "productionCapacity|checkCapacity|FULLY_BOOKED",
+          "fix": "Use optimistic locking: atomically decrement capacity at initiation time, refund the slot if payment fails or times out. Or use a reservation-with-TTL pattern.",
+          "source_wave": 12,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "FLOW-003",
+          "name": "Non-idempotent webhook handler",
+          "severity": "critical",
+          "description": "Payment webhook handler uses non-transactional increment operations (e.g., Firestore FieldValue.increment) that double-count if the webhook fires twice before the first write completes",
+          "detection": "Check webhook handlers for idempotency guards. Look for increment() operations outside of transactions. Verify the idempotency check (e.g., order exists) is within the same transaction as the write.",
+          "grep_pattern": "increment\\(|FieldValue\\.increment",
+          "fix": "Wrap the entire webhook processing in a Firestore transaction. Check idempotency within the transaction. Use set-with-merge for the order, not increment for derived values.",
+          "source_wave": 12,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "FLOW-004",
+          "name": "Rate limiter with fail-open error path",
+          "severity": "high",
+          "description": "Rate limiting function returns allowed:true when its backing store (Redis, Firestore, etc.) is unavailable — any transient DB error eliminates all rate limiting",
+          "detection": "Read the catch block of the rate limiter. Check if it returns a permissive default (allowed: true) or a restrictive default (allowed: false).",
+          "grep_pattern": "checkRateLimit|rateLimit.*catch|allowed.*true",
+          "fix": "Change catch block to return allowed: false (fail-closed). Alternatively, use an in-memory fallback counter.",
+          "source_wave": 12,
+          "source_codebase": "coco-snob"
+        }
+      ]
+    },
+    "contract_audit": {
+      "id": 3,
+      "patterns": [
+        {
+          "id": "CONTRACT-001",
+          "name": "Overly permissive RLS policy",
+          "severity": "high",
+          "description": "Development-time open RLS policy (WITH CHECK (true) for anon) coexists with production role-gated policies — the most permissive policy wins, bypassing role restrictions",
+          "detection": "Grep for 'WITH CHECK (true)' or 'USING (true)' in RLS policies. Cross-reference with role-gated policies on same table. Flag if anon has write access.",
+          "grep_pattern": "WITH CHECK \\(true\\)|USING \\(true\\)",
+          "fix": "Drop dev-time open policies. Ensure only role-gated policies exist for write operations.",
+          "source_wave": 7,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "CONTRACT-002",
+          "name": "CSRF check that fails open",
+          "severity": "medium",
+          "description": "CSRF origin validation that skips the check when origin or host header is absent, rather than rejecting the request",
+          "detection": "Check API route CSRF guards for `if (origin && host && ...)` pattern. The correct pattern is `if (!origin || origin !== expectedOrigin)` (fail closed).",
+          "grep_pattern": "origin && host",
+          "fix": "Change to fail-closed: reject if origin is missing or doesn't match expected origin exactly.",
+          "source_wave": 7,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "CONTRACT-003",
+          "name": "Phantom feature (silently blocked by rules)",
+          "severity": "high",
+          "description": "Client-side Firestore write that hits `allow write: if false` security rule — the UI flow looks functional but every write silently fails at the database layer",
+          "detection": "Map all client-side setDoc/updateDoc/deleteDoc/addDoc calls. Cross-reference collection paths with Firestore rules. Flag any hitting `if false` or missing write rules.",
+          "grep_pattern": "setDoc|updateDoc|deleteDoc|addDoc",
+          "fix": "Route writes through Cloud Functions with Admin SDK, or update Firestore rules to allow the specific write with proper constraints.",
+          "source_wave": 8,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "CONTRACT-004",
+          "name": "Missing server-side mediation for privileged writes",
+          "severity": "medium",
+          "description": "Client writes privileged fields (tier, points, role) directly to Firestore relying solely on security rules — no Cloud Function intermediary to validate business logic",
+          "detection": "Search for updateDoc/setDoc calls that modify fields listed in 'isNotUpdatingPrivilegedFields()' rule. Flag any direct client writes to these fields.",
+          "grep_pattern": "tier|points|lifetimeSpend|vipStatus|role|admin",
+          "fix": "Create a Cloud Function endpoint that validates business logic before writing privileged fields. Remove direct client writes.",
+          "source_wave": 8,
+          "source_codebase": "coco-snob"
+        }
+      ]
+    },
+    "ghost_code": {
+      "id": 4,
+      "patterns": [
+        {
+          "id": "GHOST-001",
+          "name": "Dead dependency",
+          "severity": "medium",
+          "description": "Package listed in package.json dependencies but never imported in source code",
+          "detection": "For each dep in package.json.dependencies, grep src/ for import/require of that package name. Zero hits = dead.",
+          "grep_pattern": "from ['\"]<pkg-name>",
+          "fix": "Remove from package.json, run npm install",
+          "source_wave": 1,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "GHOST-002",
+          "name": "Shim/re-export indirection",
+          "severity": "low",
+          "description": "File whose sole purpose is re-exporting from another module (backward-compat layer that adds confusion)",
+          "detection": "File body is only import + re-export, no logic. Multiple files import from shim instead of canonical path.",
+          "grep_pattern": "export .* from ['\"]",
+          "fix": "Migrate all consumers to canonical import path, delete shim file",
+          "source_wave": 1,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "GHOST-003",
+          "name": "Stub component with fake behavior",
+          "severity": "low",
+          "description": "Component with setTimeout/fake submit, hardcoded dropdown options, and TODO comments — not connected to real data",
+          "detection": "Check for: setTimeout in submit handlers, hardcoded <option> values, TODO comments in data flow paths",
+          "grep_pattern": "setTimeout.*resolve.*1000|TODO.*Supabase|TODO.*Call.*API",
+          "fix": "Add STUB comment header for discoverability. Track as ticket for real implementation.",
+          "source_wave": 1,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "GHOST-004",
+          "name": "Ungated console.log in production",
+          "severity": "medium",
+          "description": "console.log calls in production code that leak internal state, user IDs, or debug info to browser console",
+          "detection": "Grep for console.log in src/ (excluding test files). Flag any that log: success messages, user IDs/emails, internal counts, emoji-prefixed status messages",
+          "grep_pattern": "console\\.log\\(",
+          "exclude_pattern": "test|spec|__tests__",
+          "fix": "Remove entirely (UI already shows feedback) or gate behind process.env.NODE_ENV === 'development'",
+          "source_wave": 2,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "GHOST-005",
+          "name": "Dead route/scaffolding page",
+          "severity": "medium",
+          "description": "Minimal page (e.g. 'Test Page Works') accessible in production with no auth guard, no metadata, no purpose",
+          "detection": "Check for routes with <5 lines of code, no data fetching, no auth checks. Common names: /test, /debug, /demo",
+          "grep_pattern": "export default function.*Page.*return.*<div>.*</div>",
+          "fix": "Delete the page and its directory",
+          "source_wave": 2,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "GHOST-006",
+          "name": "Phantom client write (rules-blocked feature)",
+          "severity": "critical",
+          "description": "Client-side code writes to a Firestore/database path that is blocked by security rules (e.g. allow write: if false). The feature appears functional in the UI but every write silently fails. Often caused by security rules being tightened after the feature was built.",
+          "detection": "Map all client-side write operations (setDoc, updateDoc, deleteDoc, .rpc()). Cross-reference each target path against database rules/RLS policies. If the rule blocks the write, it's a phantom feature.",
+          "grep_pattern": "setDoc|updateDoc|deleteDoc|addDoc",
+          "fix": "Either: (a) move the write to a server-side function (Cloud Function / API route) that uses Admin SDK, or (b) update security rules to allow the specific write pattern. Never leave dead writes in production.",
+          "source_wave": 16,
+          "source_codebase": "coco-snob"
+        }
+      ]
+    },
+    "code_quality": {
+      "id": 5,
+      "patterns": [
+        {
+          "id": "QUALITY-001",
+          "name": "Untyped Supabase response",
+          "severity": "medium",
+          "description": "Supabase .from().select() join query result cast to `any` instead of typed interface, losing type safety on nested relations",
+          "detection": "Grep for `as any` or `: any` near .from( or .select( calls. Check for explicit `any` on data destructuring from Supabase queries.",
+          "grep_pattern": "as any|: any",
+          "fix": "Create typed interface matching the Supabase join shape and cast data to it",
+          "source_wave": 3,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "QUALITY-002",
+          "name": "Unused imports/parameters (strict tsconfig)",
+          "severity": "low",
+          "description": "Unused imports, variables, or function parameters not caught because noUnusedLocals/noUnusedParameters are disabled in tsconfig.json",
+          "detection": "Check tsconfig.json for noUnusedLocals and noUnusedParameters flags. If missing, enable and rebuild to surface issues.",
+          "grep_pattern": "noUnusedLocals|noUnusedParameters",
+          "fix": "Add flags to tsconfig.json strict section. Fix surfaced errors (remove unused imports, prefix unused params with _).",
+          "source_wave": 3,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "QUALITY-003",
+          "name": "Cached Firebase token on auth gate",
+          "severity": "high",
+          "description": "Firebase getIdTokenResult() called without `true` parameter on auth-gate paths — returns cached token that can be up to 1 hour stale, allowing revoked users to retain access",
+          "detection": "Grep for getIdTokenResult() without `true` argument. Flag any on security-critical paths (role checks, admin gates, permission bypasses).",
+          "grep_pattern": "getIdTokenResult\\(\\)",
+          "fix": "Change to getIdTokenResult(true) to force token refresh and get current claims from server",
+          "source_wave": 4,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "QUALITY-004",
+          "name": "Oversized monolith component",
+          "severity": "medium",
+          "description": "Single file exceeding 400 lines that mixes data fetching, business logic, and rendering — violates single responsibility principle",
+          "detection": "Count lines per file in src/. Flag any .tsx/.ts file >400 lines. Prioritize files >800 lines.",
+          "grep_pattern": "N/A (line count check)",
+          "fix": "Extract into custom hooks (useXxx), sub-components, and utility functions. Target <400 lines per file.",
+          "source_wave": 4,
+          "source_codebase": "coco-snob"
+        },
+        {
+          "id": "QUALITY-005",
+          "name": "Icon-only button without aria-label",
+          "severity": "medium",
+          "description": "Button element contains only an icon (SVG, emoji, or symbol character like ✕) with no visible text — screen readers announce it as just 'button' with no context, violating WCAG 2.1 SC 4.1.2 (Name, Role, Value). Also breaks voice navigation (users cannot say 'click [name]') and makes test selectors fragile.",
+          "detection": "Find all <button> elements. Check if the button's children contain visible text or an aria-label/aria-labelledby attribute. Flag any button whose only children are <svg>, emoji characters, or symbol entities without an accessible name.",
+          "grep_pattern": "<button[^>]*>\\s*(<svg|✕|✖|×|⨉|&#x|&times)",
+          "fix": "Add aria-label describing the action (not the icon). Use imperative verbs: 'Close modal', 'Dismiss alert', 'Remove item' — never 'X button' or 'Cross icon'. If the button already has visible text, do NOT add aria-label (the text is the accessible name).",
+          "source_wave": 23,
+          "source_codebase": "coco-snob"
+        }
+      ]
+    },
+    "test_gaps": {
+      "id": 6,
+      "patterns": [
+        {
+          "id": "TEST-001",
+          "name": "API route without test coverage",
+          "severity": "medium",
+          "description": "POST/PUT/DELETE API route handler with auth, CSRF, and validation logic but zero test coverage — regression risk on security-critical code paths",
+          "detection": "List all files matching app/api/*/route.ts. Cross-reference with __tests__/ directories. Flag any route without a corresponding test file.",
+          "grep_pattern": "export async function POST|PUT|DELETE",
+          "fix": "Write tests calling the route handler directly with mocked Supabase clients. Cover: CSRF rejection, auth checks, validation, happy path, error paths.",
+          "source_wave": 9,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "TEST-002",
+          "name": "Timer/interval hook without fake timer tests",
+          "severity": "medium",
+          "description": "React hook using setTimeout/setInterval/Date.now for session timeouts or polling without tests using vi.useFakeTimers — behavior untested at time boundaries",
+          "detection": "Grep for setTimeout|setInterval|Date.now in hooks/. Check if corresponding __tests__/ file exists with vi.useFakeTimers.",
+          "grep_pattern": "setTimeout|setInterval|Date\\.now",
+          "fix": "Write tests with vi.useFakeTimers() + vi.advanceTimersByTime(). Test: warning threshold, timeout callback, reset behavior, cleanup on unmount.",
+          "source_wave": 9,
+          "source_codebase": "etna"
+        }
+      ]
+    },
+    "resilience": {
+      "id": 7,
+      "patterns": [
+        {
+          "id": "RESIL-001",
+          "name": "Missing React error boundary",
+          "severity": "critical",
+          "description": "Application has no React error boundaries — any unhandled render error kills the entire component tree with a blank white screen and no recovery option",
+          "detection": "Search for ErrorBoundary, componentDidCatch, getDerivedStateFromError, or error.tsx files. If none found, the app has no crash containment.",
+          "grep_pattern": "ErrorBoundary|componentDidCatch|getDerivedStateFromError",
+          "fix": "Add at minimum a root error boundary in layout.tsx. For complex apps, add nested boundaries around major sections (admin panel, dashboard, forms).",
+          "source_wave": 13,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "RESIL-002",
+          "name": "Silent data suppression (unchecked .error on query result)",
+          "severity": "high",
+          "description": "Supabase/Firebase query result destructured for .data only, without checking .error — a failed query silently leaves state at [] and UI shows zero values instead of an error state",
+          "detection": "Grep for `.from(` or `supabase.` calls. Check if the response destructures both { data, error } and handles the error case. Flag any that only check `if (data)`.",
+          "grep_pattern": "if \\(.*\\.data\\)",
+          "fix": "Always destructure { data, error }. If error, show user-facing error state (toast, banner, or inline message). Never render zero values as a proxy for failed fetches.",
+          "source_wave": 13,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "RESIL-003",
+          "name": "Decorative UI control (no onChange/no state)",
+          "severity": "medium",
+          "description": "Interactive UI element (dropdown, toggle, date picker) that appears functional but has no onChange handler, no state binding, and no effect on displayed data",
+          "detection": "Search for <select>, <input type='checkbox'>, or toggle components. Check if they have onChange, value/checked props, and a connected state variable that affects data fetching.",
+          "grep_pattern": "<select[^>]*>(?!.*onChange)",
+          "fix": "Either wire the control to state and data fetching, or remove it. Decorative controls erode user trust.",
+          "source_wave": 13,
+          "source_codebase": "etna"
+        },
+        {
+          "id": "RESIL-004",
+          "name": "onSnapshot listener without error callback",
+          "severity": "high",
+          "description": "Firestore onSnapshot() with only a success callback — if the query fails (permissions, network), the listener silently stops updating and the UI shows stale or empty data with no indication",
+          "detection": "Grep for onSnapshot( calls. Check if each has a second argument (error callback) or uses the { next, error } object form. Flag any with only one callback.",
+          "grep_pattern": "onSnapshot\\(",
+          "fix": "Add error callback as second argument: (error) => { console.error(...); setError(true); }. Show a user-facing error banner when the listener fails.",
+          "source_wave": 14,
+          "source_codebase": "coco-snob"
+        }
+      ]
+    }
+  }
+}
