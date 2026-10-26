@@ -8,8 +8,8 @@ Skills teach Claude Code how to handle specific tasks better. They load on-deman
 
 | Skill | Description |
 |-------|-------------|
-| **[subagent-orchestration](skills/subagent-orchestration/)** | Parallel subagent deployment with build verification, context priming, memory extraction, and 6 core patterns for efficient delegation. |
-| **[house-party-protocol](skills/house-party-protocol/)** | Multi-agent team orchestration with study group swarming, model-per-role strategy, consensus voting, and hook-based quality gates. |
+| **[siege](skills/siege/)** | Code health analysis, security auditing and hardening: 9-pillar static analysis, a self-installing tool chain and an optional live attack simulation. |
+| **[voice-input](skills/voice-input/)** | Oraculum voice daemon control: local push-to-talk streaming speech-to-text (mlx-whisper on Metal, Silero VAD, no cloud APIs). |
 
 *[Contribute yours!](CONTRIBUTING.md)*
 
@@ -60,7 +60,7 @@ Claude Code automatically discovers installed skills and uses them when relevant
 Invoke any skill directly with its slash command:
 
 ```
-/subagent-orchestration
+/siege
 ```
 
 ## How It Works
@@ -71,8 +71,8 @@ Skills follow the [Agent Skills](https://agentskills.io) open standard adopted b
 GitHub Repo                        Your Machine
 ────────────                       ────────────
 skills/                            ~/.bbr-claude-skills/repo/  (cloned)
-  subagent-orchestration/              ↓ symlinked
-    SKILL.md              ───→     ~/.claude/skills/subagent-orchestration/
+  siege/                               ↓ symlinked
+    SKILL.md              ───→     ~/.claude/skills/siege/
                                    (or .claude/skills/ for project scope)
 ```
 
@@ -136,9 +136,9 @@ bbr-claude-skills/
 ├── bin/
 │   └── cli.js              # CLI entrypoint
 ├── skills/
-│   ├── subagent-orchestration/
-│   │   └── SKILL.md        # 6 patterns + build verification rule
-│   └── house-party-protocol/
+│   ├── siege/
+│   │   └── SKILL.md        # code health + security audit
+│   └── voice-input/
 │       └── SKILL.md
 └── docs/
     └── skill-authoring.md  # Guide for creating new skills
