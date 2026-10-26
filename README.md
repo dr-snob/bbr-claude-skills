@@ -137,7 +137,7 @@ bbr-claude-skills/
 │   └── siege/
 │       └── SKILL.md        # code health + security audit
 └── docs/
-    └── skill-authoring.md  # Guide for creating new skills
+    └── PROGRESS.md         # Release history
 ```
 
 ## Contributing
