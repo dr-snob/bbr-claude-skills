@@ -9,8 +9,6 @@ Skills teach Claude Code how to handle specific tasks better. They load on-deman
 | Skill | Description |
 |-------|-------------|
 | **[siege](skills/siege/)** | Code health analysis, security auditing and hardening: 9-pillar static analysis, a self-installing tool chain and an optional live attack simulation. |
-| **[voice-input](skills/voice-input/)** | Oraculum voice daemon control: local push-to-talk streaming speech-to-text (mlx-whisper on Metal, Silero VAD, no cloud APIs). |
-
 *[Contribute yours!](CONTRIBUTING.md)*
 
 ## Install
@@ -136,10 +134,8 @@ bbr-claude-skills/
 ├── bin/
 │   └── cli.js              # CLI entrypoint
 ├── skills/
-│   ├── siege/
-│   │   └── SKILL.md        # code health + security audit
-│   └── voice-input/
-│       └── SKILL.md
+│   └── siege/
+│       └── SKILL.md        # code health + security audit
 └── docs/
     └── skill-authoring.md  # Guide for creating new skills
 ```
